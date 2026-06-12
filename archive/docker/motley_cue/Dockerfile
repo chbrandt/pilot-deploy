@@ -1,0 +1,47 @@
+FROM almalinux:9
+
+RUN yum install -y \
+    openssh-server \
+    procps \
+    wget \
+    && yum clean all
+
+# Generate SSH host keys
+RUN ssh-keygen -A
+
+# For bonsai (dependency of motley-cue)
+RUN yum install -y \
+    gcc \
+    python3.12 \
+    python3.12-devel \
+    openldap-devel \
+    cyrus-sasl-devel \
+    && yum clean all
+
+ENV VENV_PATH=/opt/venv
+
+RUN python3.12 -m venv ${VENV_PATH} && \
+    ${VENV_PATH}/bin/pip install --upgrade pip && \
+    ${VENV_PATH}/bin/pip install motley-cue supervisor
+
+ENV MOTLEY_CUE_CONFIG=${VENV_PATH}/motley_cue.conf
+COPY etc/motley_cue.conf ${MOTLEY_CUE_CONFIG}
+
+ENV FEUDAL_ADAPTER_CONFIG=${VENV_PATH}/feudal_adapter.conf
+COPY etc/feudal_adapter.conf ${FEUDAL_ADAPTER_CONFIG}
+
+RUN wget https://repo.data.kit.edu//data-kit-edu-almalinux9.repo \
+    -O /etc/yum.repos.d/data-kit-edu-almalinux9.repo
+RUN yum install -y pam-ssh-oidc-autoconfig
+
+# For some reason the autoconfig does not work.
+# This file needs to be run before 50-redhat.conf:
+COPY etc/ssh-oidc.conf /etc/ssh/sshd_config.d/10-ssh-oidc.conf
+
+# Copy supervisord configuration
+COPY etc/supervisord.conf /etc/supervisord.conf
+
+EXPOSE 22
+EXPOSE 8080
+
+ENTRYPOINT ["sh", "-c", "${VENV_PATH}/bin/supervisord -c /etc/supervisord.conf"]
