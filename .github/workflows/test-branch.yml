@@ -1,0 +1,38 @@
+name: Test Branch
+
+# Test branch workflow for homologation builds: lints and packages the
+# pilot chart, uploading it as a workflow artifact.
+on:
+  push:
+    branches:
+      - test
+
+permissions:
+  contents: read
+
+jobs:
+  test-branch:
+    runs-on: ubuntu-latest
+    env:
+      CHART_DIR: charts/manager
+      CHART_DEST: dist
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm lint pilot chart
+        run: helm lint charts/manager
+
+      - name: Package pilot chart
+        run: |
+          mkdir -p $CHART_DEST
+          helm package $CHART_DIR --destination $CHART_DEST
+
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-pilot-chart
+          path: $CHART_DEST/*.tgz

@@ -1,0 +1,34 @@
+name: Pull Request Validation
+
+# PR validation workflow for the deployment recipes.
+# No artifacts are published by this workflow.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+      - test
+
+permissions:
+  contents: read
+
+jobs:
+  pr-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm lint pilot chart
+        run: helm lint charts/manager
+
+      - name: Helm template validation
+        run: |
+          helm template pilot charts/manager > /tmp/rendered.yaml
+          grep -q "kind: Deployment" /tmp/rendered.yaml
+          grep -q "pilot-api" /tmp/rendered.yaml
+          grep -q "pilot-app" /tmp/rendered.yaml

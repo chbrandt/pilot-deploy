@@ -1,8 +1,8 @@
-{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+{{- if and .Values.api.persistence.enabled (not .Values.api.persistence.existingClaim) }}
 {{/*
-PersistentVolumeClaim for the manager's data/ directory.
+PersistentVolumeClaim for the pilot-api data/ directory.
 
-The manager stores per-user saved deployment configs as JSON files under
+The API stores per-user saved deployment configs as JSON files under
 /app/data/<namespace>.json.  Without a PVC these files are lost on pod
 restart.  For a single-replica deployment ReadWriteOnce is sufficient.
 */}}
@@ -15,11 +15,11 @@ metadata:
     {{- include "manager.labels" . | nindent 4 }}
 spec:
   accessModes:
-    - {{ .Values.persistence.accessMode | quote }}
+    - {{ .Values.api.persistence.accessMode | quote }}
   resources:
     requests:
-      storage: {{ .Values.persistence.size | quote }}
-  {{- if .Values.persistence.storageClass }}
-  storageClassName: {{ .Values.persistence.storageClass | quote }}
+      storage: {{ .Values.api.persistence.size | quote }}
+  {{- if .Values.api.persistence.storageClass }}
+  storageClassName: {{ .Values.api.persistence.storageClass | quote }}
   {{- end }}
 {{- end }}

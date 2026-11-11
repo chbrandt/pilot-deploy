@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **CR1 — repository split**: the HPC Pilot monorepo was split into three
+  repositories: **pilot-deploy** (this repo — Helm charts, docker recipes
+  and packaging CI), **pilot-api** (the REST API server) and **pilot-app**
+  (the web GUI).
+- **Manager chart → two services** (`egi-hpc-pilot` v0.3.0, breaking values
+  change): the chart now deploys both `pilot-api` and `pilot-app` — two
+  Deployments and two ClusterIP Services. Values were restructured:
+  `api.image.*` / `app.image.*`, `api.flask.*` / `app.flask.*`,
+  `api.persistence.*` (the saved-configs PVC belongs to the API) and
+  `app.apiBaseUrl`.
+- **Ingress split**: `/` routes to the `pilot-app` Service, `/api`
+  (Prefix) routes to the `pilot-api` Service (Swagger UI at `/api/docs`).
+- **Secrets**: the chart-created Secret now carries two session keys
+  (`flask-secret-key`, `app-flask-secret-key`) and the optional OIDC client
+  secret (`pilot-oidc-client-secret`), injected into the **API** pod only
+  via `PILOT_OIDC_CLIENT_SECRET` (the GUI never receives it).
+- Probes for both services now target the public `/health` endpoint.
+- New `docker/docker-compose.yml` recipe running both service images
+  locally; `docker/motley_cue/` (HPC edge-node) moved here from
+  `archive/docker/`.
+
 ## [v0.4.1] - 2026-10-13
 
 ### Added

@@ -24,11 +24,21 @@ spec:
     - host: "{{ .Values.siteConfig.hostname | replace "\"" "" }}"
       http:
         paths:
-          - path: {{ .Values.ingress.path | default "/" }}
+          # The API (incl. the Swagger UI at /api/docs) is routed directly
+          # to the pilot-api service; the GUI also uses it in-cluster.
+          - path: /api
             pathType: {{ .Values.ingress.pathType | default "Prefix" }}
             backend:
               service:
-                name: {{ include "manager.fullname" . }}
+                name: {{ include "manager.apiName" . }}
+                port:
+                  number: {{ .Values.ingress.port | default 80 }}
+          # Everything else (the browser UI) goes to the GUI service.
+          - path: /
+            pathType: {{ .Values.ingress.pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ include "manager.appName" . }}
                 port:
                   number: {{ .Values.ingress.port | default 80 }}
 {{- end }}

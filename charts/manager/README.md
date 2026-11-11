@@ -1,11 +1,18 @@
-# HPC Pilot Manager — Helm Chart
+# HPC Pilot — Helm Chart (pilot-deploy)
 
-This chart deploys the **HPC Pilot Manager** Flask application inside a
-Kubernetes cluster, together with all the supporting resources it needs to
-manage per-user [InterLink](https://interlink-project.dev) pod deployments.
+This chart deploys the **two HPC Pilot services** inside a Kubernetes
+cluster, together with all the supporting resources they need to manage
+per-user [InterLink](https://interlink-project.dev) pod deployments:
+
+- **pilot-api** — the REST API server
+  ([pilot-api](https://github.com/chbrandt/pilot-api)); talks to Kubernetes,
+  Helm and the HPC edge-nodes. Owns the RBAC ServiceAccount, the
+  `pilot_config.yaml` ConfigMap and (optionally) the data PVC.
+- **pilot-app** — the web GUI ([pilot-app](https://github.com/chbrandt/pilot-app));
+  a pure HTTP client of the API. Reached by users through the Ingress.
 
 - **Chart name:** `egi-hpc-pilot` (see [`Chart.yaml`](./Chart.yaml))
-- **Version:** `0.1.0` / appVersion `0.1.0`
+- **Version:** `0.3.0` / appVersion `0.4.1`
 
 ---
 
@@ -19,12 +26,14 @@ manage per-user [InterLink](https://interlink-project.dev) pod deployments.
 | `hpc-pilot-manager` | `ServiceAccount` | In-cluster identity for the pod |
 | `egi-hpc-pilot` | `ClusterRole` | RBAC superset of the InterLink virtual-kubelet role: namespaces, jobs, services, ingresses, nodes (+status), pods (+status), configmaps, secrets, events, deployments, replicasets, serviceaccounts (+token), certificatesigningrequests (+approval), leases, and cluster/role RBAC |
 | `egi-hpc-pilot` | `ClusterRoleBinding` | Binds the ClusterRole to the ServiceAccount |
-| `<release>-manager` | `Secret` | Flask session secret key |
-| `<release>-manager-pilot-config` | `ConfigMap` | `pilot_config.yaml` (unified site + charts + hpc configuration) |
-| `<release>-manager-data` | `PersistentVolumeClaim` | Durable store for per-user saved deployment configs |
-| `<release>-manager` | `Deployment` | The Flask manager pod |
-| `<release>-manager` | `Service` | ClusterIP service (port 80 → Flask port 5000) |
-| `<release>-manager` | `Ingress` | nginx Ingress on `siteConfig.hostname` (exposes the manager UI/API) |
+| `<fullname>` | `Secret` | Session keys for both services (+ optional OIDC client secret) |
+| `<fullname>-pilot-config` | `ConfigMap` | `pilot_config.yaml` (unified site + charts + hpc configuration) |
+| `<fullname>-data` | `PersistentVolumeClaim` | Durable store for per-user saved deployment configs (pilot-api) |
+| `<fullname>-api` | `Deployment` | The **pilot-api** pod |
+| `<fullname>-app` | `Deployment` | The **pilot-app** (web GUI) pod |
+| `<fullname>-api` | `Service` | ClusterIP (port 80 → Flask port 5000) |
+| `<fullname>-app` | `Service` | ClusterIP (port 80 → Flask port 5000) |
+| `<fullname>` | `Ingress` | nginx Ingress on `siteConfig.hostname`: `/` → `pilot-app`, `/api` → `pilot-api` |
 
 ---
 
@@ -36,18 +45,22 @@ manage per-user [InterLink](https://interlink-project.dev) pod deployments.
 - A **DNS record** for the single `siteConfig.hostname` pointing at the Ingress
   controller's external IP (no wildcard record required — routing is
   path-prefix based)
-- The manager container image built from the root `Dockerfile` and pushed to
-  an accessible registry
+- The two container images built and pushed to an accessible registry:
+  `pilot-api` (from the pilot-api repository) and `pilot-app` (from the
+  pilot-app repository)
 
 ---
 
-## Building the image
+## Building the images
 
 ```bash
-# From the repository root
-docker build -t ghcr.io/<your-org>/hpc-pilot-manager:latest .
+# pilot-api (from the pilot-api repository root)
+docker build -t ghcr.io/<your-org>/pilot-api:latest .
+docker push ghcr.io/<your-org>/pilot-api:latest
 
-docker push ghcr.io/<your-org>/hpc-pilot-manager:latest
+# pilot-app (from the pilot-app repository root)
+docker build -t ghcr.io/<your-org>/pilot-app:latest .
+docker push ghcr.io/<your-org>/pilot-app:latest
 ```
 
 ---
@@ -55,16 +68,20 @@ docker push ghcr.io/<your-org>/hpc-pilot-manager:latest
 ## Quick start
 
 ```bash
-# 1. Generate a strong Flask secret key
-SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')
+# 1. Generate strong Flask secret keys (one per service)
+API_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')
+APP_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')
 
 # 2. Install the chart
-helm install manager ./charts/manager \
-  --set image.repository=ghcr.io/<your-org>/hpc-pilot-manager \
-  --set image.tag=latest \
-  --set flask.secretKey="$SECRET" \
-  --set siteConfig.hostname=manager.example.com \
-  --set interlinkConfig.chart=oci://ghcr.io/chbrandt/interlink
+helm install pilot ./charts/manager \
+  --set api.image.repository=ghcr.io/<your-org>/pilot-api \
+  --set api.image.tag=latest \
+  --set api.flask.secretKey="$API_SECRET" \
+  --set app.image.repository=ghcr.io/<your-org>/pilot-app \
+  --set app.image.tag=latest \
+  --set app.flask.secretKey="$APP_SECRET" \
+  --set siteConfig.hostname=pilot.example.org \
+  --set interlinkConfig.chart=oci://ghcr.io/chbrandt/interlink-helm-chart/interlink
 
 # 3. Verify
 kubectl get all -n hpc-pilot
@@ -75,25 +92,38 @@ kubectl get ingress -n hpc-pilot
 
 ## Configuration reference
 
-### Image
+### Images
+
+Identical structure under `api.` (the REST API) and `app.` (the web GUI):
 
 | Parameter | Default | Description |
 |---|---|---|
-| `image.repository` | `ghcr.io/chbrandt/hpc-pilot-manager` | Container image repository |
-| `image.tag` | `latest` | Image tag |
-| `image.pullPolicy` | `Always` | Image pull policy |
-| `image.pullSecrets` | `[]` | Optional registry pull secrets |
-| `replicaCount` | `1` | Number of manager pods |
+| `api.image.repository` | `ghcr.io/chbrandt/pilot-api` | pilot-api image repository |
+| `app.image.repository` | `ghcr.io/chbrandt/pilot-app` | pilot-app image repository |
+| `api.image.tag` / `app.image.tag` | `latest` | Image tags |
+| `api.image.pullPolicy` / `app.image.pullPolicy` | `Always` | Image pull policy |
+| `api.image.pullSecrets` / `app.image.pullSecrets` | `[]` | Optional registry pull secrets |
+| `api.replicaCount` / `app.replicaCount` | `1` | Number of pods per service |
 
 ### Flask
 
 | Parameter | Default | Description |
 |---|---|---|
-| `flask.port` | `5000` | Port Flask listens on inside the container |
-| `flask.debug` | `"0"` | Set to `"1"` for debug mode (never in production) |
-| `flask.secretKey` | `"ok-for-dev-only-…"` | Flask session secret key — **always override in production** |
-| `flask.existingSecret` | `""` | Use a pre-existing Secret instead of creating one |
-| `flask.existingSecretKey` | `flask-secret-key` | Key inside the existing Secret |
+| `api.flask.port` / `app.flask.port` | `5000` | Port Flask listens on inside the container |
+| `api.flask.debug` / `app.flask.debug` | `"0"` | Set to `"1"` for debug mode (never in production) |
+| `api.flask.secretKey` / `app.flask.secretKey` | `"ok-for-dev-only-…"` | Flask session secret keys — **always override in production** |
+| `api.flask.existingSecret` / `app.flask.existingSecret` | `""` | Use a pre-existing Secret instead of creating one |
+| `api.flask.existingSecretKey` | `flask-secret-key` | Key inside the existing Secret (pilot-api) |
+| `app.flask.existingSecretKey` | `app-flask-secret-key` | Key inside the existing Secret (pilot-app) |
+| `app.apiBaseUrl` | `""` | Base URL of the API as seen from the GUI pod (default: the in-cluster `…-api` Service) |
+
+### OIDC client secret (pilot-api only)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `api.oidcClientSecret` | `""` | Chart-Secret value injected as `PILOT_OIDC_CLIENT_SECRET` into the API pod — the GUI never receives it |
+| `api.existingOidcSecret` | `""` | Use a pre-existing Secret for the OIDC client secret |
+| `api.existingOidcSecretKey` | `pilot-oidc-client-secret` | Key inside the existing OIDC Secret |
 
 ### Unified configuration (`pilot_config.yaml`)
 
@@ -157,15 +187,18 @@ Placeholder tokens resolved per-user at seed time (only these two are used):
 | `__NAMESPACE__` | User's Kubernetes namespace, e.g. `user-a3f1b2c4d5e6f7a8` |
 | `__HOSTNAME__` | `siteConfig.hostname` (the single shared hostname) |
 
-### Persistence
+### Persistence (pilot-api)
+
+The saved-configuration store lives in the API pod (`/app/data`), so the PVC
+belongs to pilot-api:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `persistence.enabled` | `false` | Mount a PVC for `/app/data` |
-| `persistence.size` | `1Gi` | PVC storage size |
-| `persistence.accessMode` | `ReadWriteOnce` | PVC access mode |
-| `persistence.storageClass` | `""` | StorageClass (leave blank for cluster default) |
-| `persistence.existingClaim` | `""` | Use a pre-existing PVC |
+| `api.persistence.enabled` | `false` | Mount a PVC for `/app/data` |
+| `api.persistence.size` | `1Gi` | PVC storage size |
+| `api.persistence.accessMode` | `ReadWriteOnce` | PVC access mode |
+| `api.persistence.storageClass` | `""` | StorageClass (leave blank for cluster default) |
+| `api.persistence.existingClaim` | `""` | Use a pre-existing PVC |
 
 ### Ingress
 
@@ -173,12 +206,11 @@ Placeholder tokens resolved per-user at seed time (only these two are used):
 |---|---|---|
 | `ingress.enabled` | `true` | Create an Ingress resource |
 | `ingress.className` | `nginx` | IngressClass name |
-| `ingress.path` | `/` | URL path prefix |
-| `ingress.pathType` | `Prefix` | Path type |
+| `ingress.pathType` | `Prefix` | Path type (`/` → `pilot-app`, `/api` → `pilot-api`) |
 | `ingress.port` | `80` | Backend service port |
 | `ingress.annotations` | see values | Extra annotations (timeouts are pre-configured) |
 | `ingress.tls.enabled` | `true` | Enable TLS for `siteConfig.hostname` |
-| `ingress.tls.secretName` | `manager-tls` | Secret holding the TLS certificate |
+| `ingress.tls.secretName` | `pilot-tls` | Secret holding the TLS certificate |
 
 > The Ingress host is `siteConfig.hostname` (not a separate `ingress.host`
 > value). The chart does **not** require a wildcard record — a single-host
@@ -188,21 +220,25 @@ Placeholder tokens resolved per-user at seed time (only these two are used):
 
 | Parameter | Default |
 |---|---|
-| `resources.requests.cpu` | `100m` |
-| `resources.requests.memory` | `128Mi` |
-| `resources.limits.cpu` | `500m` |
-| `resources.limits.memory` | `512Mi` |
+| `api.resources.requests.cpu` | `100m` |
+| `api.resources.requests.memory` | `128Mi` |
+| `api.resources.limits.cpu` | `500m` |
+| `api.resources.limits.memory` | `512Mi` |
+| `app.resources.requests.cpu` | `50m` |
+| `app.resources.requests.memory` | `64Mi` |
+| `app.resources.limits.cpu` | `250m` |
+| `app.resources.limits.memory` | `256Mi` |
 
 ---
 
 
-## How the manager connects to InterLink deployments
+## How pilot-api connects to InterLink deployments
 
 ```
 User logs in (EGI Check-in token)
   │
   ▼
-Manager derives namespace: user-<hash>   ←── from token "sub" claim
+Manager (pilot-api) derives namespace: user-<hash>   ←── from token "sub" claim
   │
   ▼
 POST /api/interlink
@@ -234,9 +270,10 @@ HPC edge-node runs wstunnel client:
 ## Upgrading
 
 ```bash
-helm upgrade manager ./charts/manager \
+helm upgrade pilot ./charts/manager \
   --reuse-values \
-  --set image.tag=<new-tag>
+  --set api.image.tag=<new-api-tag> \
+  --set app.image.tag=<new-app-tag>
 ```
 
 ## Uninstalling

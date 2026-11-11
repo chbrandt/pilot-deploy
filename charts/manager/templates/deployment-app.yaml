@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "manager.appName" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: {{ .Values.app.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "manager.appSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "manager.appSelectorLabels" . | nindent 8 }}
+    spec:
+      # The GUI talks to the API over HTTP only — no cluster RBAC needed.
+      {{- with .Values.app.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      containers:
+        - name: pilot-app
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.flask.port }}
+              protocol: TCP
+
+          # ── Environment ───────────────────────────────────────────────
+          env:
+            - name: FLASK_PORT
+              value: {{ .Values.app.flask.port | quote }}
+            - name: FLASK_DEBUG
+              value: {{ .Values.app.flask.debug | quote }}
+            - name: FLASK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manager.appSecretName" . }}
+                  key: {{ .Values.app.flask.existingSecretKey | quote }}
+            # The GUI forwards every operation (incl. login) to the API.
+            # Default: the in-cluster API Service created by this chart.
+            - name: API_BASE_URL
+              value: {{ .Values.app.apiBaseUrl | default (printf "http://%s:80" (include "manager.apiName" .)) | quote }}
+            {{- with .Values.app.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+          # ── Health checks (public /health endpoint) ─────────────────────
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+          # ── Resources ──────────────────────────────────────────────────
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}

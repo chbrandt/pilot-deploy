@@ -1,41 +1,105 @@
-# values.yaml — Default configuration for the HPC Pilot Manager Helm chart.
+# values.yaml — Default configuration for the HPC Pilot deployment chart.
+#
+# The chart runs the TWO services produced by the pilot-* repository split:
+#
+#   pilot-api — the REST API server (pilot-api repository). Talks to
+#               Kubernetes, Helm and the HPC edge-nodes; needs the RBAC
+#               resources, the pilot_config.yaml ConfigMap and (optionally)
+#               the data PVC.
+#   pilot-app — the web GUI (pilot-app repository). A pure HTTP client of
+#               the API (API_BASE_URL); rendered to users by the Ingress.
 #
 # Override any of these values in a custom values file:
-#   helm install manager ./charts/manager -f my-values.yaml
+#   helm install pilot ./charts/manager -f my-values.yaml
 
-# ── Namespace ──────────────────────────────────────────────────────────────────
+# ── Namespace ────────────────────────────────────────────────────────────
 namespace: hpc-pilot
 
-# ── Container image ────────────────────────────────────────────────────────────
-image:
-  repository: ghcr.io/chbrandt/hpc-pilot-manager
-  tag: latest
-  pullPolicy: Always
-  # pullSecrets:
-  #   - name: my-registry-secret
+# ── Pilot API service (pilot-api) ─────────────────────────────────────────
+api:
+  image:
+    repository: ghcr.io/chbrandt/pilot-api
+    tag: latest
+    pullPolicy: Always
+    # pullSecrets:
+    #   - name: my-registry-secret
 
-# ── Replica count ──────────────────────────────────────────────────────────────
-replicaCount: 1
+  replicaCount: 1
 
-# ── Flask configuration ────────────────────────────────────────────────────────
-flask:
-  port: 5000
-  debug: "0"
-  # secretKey: supply a strong random value here or reference an existing secret.
-  # If left empty a placeholder value is used (NOT safe for production).
-  secretKey: "ok-for-dev-only-change-me--in-prod-use-a-secret-or-random-value"
+  flask:
+    port: 5000
+    debug: "0"
+    # secretKey: supply a strong random value here or reference an existing
+    # Secret below. If left empty a placeholder value is used
+    # (NOT safe for production).
+    secretKey: "ok-for-dev-only-change-me--in-prod-use-a-secret-or-random-value"
+    # Reference an existing Secret instead of creating one from secretKey.
+    existingSecret: ""
+    existingSecretKey: flask-secret-key
 
-  # Reference an existing Secret instead of creating one from secretKey above.
-  # When set, 'flask.secretKey' is ignored.
-  existingSecret: ""
-  existingSecretKey: "flask-secret-key"
+  # OIDC client secret for confidential EGI Check-in clients. When
+  # non-empty it is injected into the API pod as PILOT_OIDC_CLIENT_SECRET
+  # (the GUI never receives it). Alternatively reference an existing
+  # Secret below.
+  oidcClientSecret: ""
+  existingOidcSecret: ""
+  existingOidcSecretKey: pilot-oidc-client-secret
 
-# ── Site configuration (written into pilot_config.yaml ConfigMap) ──────────────
+  # Persistent storage for per-user saved deployment configs (API-owned).
+  persistence:
+    enabled: false
+    # storageClass: ""   # leave blank to use the cluster default
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    # existingClaim: ""  # use a pre-existing PVC instead of creating one
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Pilot App / web GUI service (pilot-app) ───────────────────────────────
+app:
+  image:
+    repository: ghcr.io/chbrandt/pilot-app
+    tag: latest
+    pullPolicy: Always
+    # pullSecrets:
+    #   - name: my-registry-secret
+
+  replicaCount: 1
+
+  flask:
+    port: 5000
+    debug: "0"
+    secretKey: "ok-for-dev-only-change-me--in-prod-use-a-secret-or-random-value"
+    existingSecret: ""
+    existingSecretKey: app-flask-secret-key
+
+  # Base URL of the Pilot API as seen from the GUI pod. When empty
+  # (default) the chart derives it from the in-cluster API Service
+  # (http://<fullname>-api:80). Override to point at an API outside
+  # this cluster.
+  apiBaseUrl: ""
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# ── Site configuration (written into the pilot_config.yaml ConfigMap) ──────
 siteConfig:
   # Single fixed hostname the manager and every user's InterLink wstunnel
-  # endpoint are exposed on. No wildcard DNS / wildcard TLS needed: each user's
-  # tunnel is reached at <hostname>/<namespace> via path-prefix routing.
-  hostname: darrel-suprasegmental-podgily.ngrok-free.dev
+  # endpoint are exposed on. No wildcard DNS / wildcard TLS needed: each
+  # user's tunnel is reached at <hostname>/<namespace> via path-prefix
+  # routing.
+  hostname: pilot.example.org
 
   # Default container image proposed in the Submit Job form.
   defaultImage: ubuntu:22.04
@@ -49,9 +113,8 @@ siteConfig:
     localPort: 4000
 
   # Optional list of EGI VO entitlement substrings that restrict login.
-  # When non-empty, only users whose UserInfo contains at least one of these
-  # substrings are granted access. Leave empty for open access (any
-  # authenticated EGI user).
+  # When non-empty, only users whose UserInfo contains at least one of
+  # these substrings are granted access. Leave empty for open access.
   allowedGroups: []
     # - "vo.access.egi.eu"
     # - "hpc-wg"
@@ -74,33 +137,20 @@ interlinkConfig:
 
   virtualNode:
     # Do not request a cluster-signed kubelet serving certificate via a CSR.
-    # With disableCSR true the virtual-kubelet serves its :10250 endpoint with
-    # a self-signed cert, which the kube-apiserver accepts when running with
-    # --kubelet-insecure-tls (the InterLink chart's HTTP.insecure /
-    # kubeletHTTP.insecure defaults).  Avoids the kubelet-serving CSR
-    # approval/signing pipeline that otherwise gates job output retrieval on
-    # TLS verification.
     disableCSR: true
 
   interlink:
     # Port on which the InterLink API server in the InterLink pod listens.
     port: 3000
-    # Address that the InterLink API server binds to inside the InterLink pod.
     address: http://0.0.0.0
-    # Disable projected service-account token volumes on the virtual-kubelet
-    # pod (avoids mounting K8s secrets into HPC-side jobs).
     disableProjectedVolumes: true
 
   plugin:
     # Port on which the plugin API server in the HPC edge-node listens.
     port: 4000
-    # Address that the plugin API server binds to inside the HPC edge-node.
     address: http://0.0.0.0
 
-# ── HPC node connection details (written into pilot_config.yaml ConfigMap) ─────
-# Each entry under `nodes` becomes an entry under `hpc.nodes.<name>` in the
-# unified pilot_config.yaml; <name> is the HPC node's unique identifier
-# (hpc_name) used throughout the API and web GUI.
+# ── HPC node connection details (written into pilot_config.yaml ConfigMap) ─
 hpcConfig:
   nodes: {}
     # test-echo:
@@ -108,24 +158,12 @@ hpcConfig:
     #   ssh_port: 22
     #   plugin: echo
 
-# ── Persistent storage for saved deployment configs ────────────────────────────
-persistence:
-  enabled: false
-  # storageClass: ""   # leave blank to use the cluster default StorageClass
-  accessMode: ReadWriteOnce
-  size: 1Gi
-  # existingClaim: ""  # use a pre-existing PVC instead of creating one
-
-# # ── Service ────────────────────────────────────────────────────────────────────
-# service:
-#   type: ClusterIP
-#   port: 80
-
-# ── Ingress ────────────────────────────────────────────────────────────────────
+# ── Ingress ────────────────────────────────────────────────────────────────
+# "/"              → pilot-app Service (the browser GUI)
+# "/api" (Prefix)  → pilot-api Service (REST API + Swagger UI at /api/docs)
 ingress:
   enabled: true
   className: nginx
-  path: /
   pathType: Prefix
   port: 80
   annotations:
@@ -136,24 +174,5 @@ ingress:
     # TLS for siteConfig.hostname. The chart derives the host list from
     # siteConfig.hostname — only the secret name is configurable here.
     enabled: true
-    secretName: manager-tls
+    secretName: pilot-tls
     # - A certificate for siteConfig.hostname must exist in the secret.
-
-# ── Resource limits ────────────────────────────────────────────────────────────
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
-
-# # ── Service account ────────────────────────────────────────────────────────────
-# serviceAccount:
-#   # Name of the ServiceAccount to create and bind to the ClusterRole.
-#   name: hpc-pilot-manager
-
-# # ── Additional environment variables ──────────────────────────────────────────
-# extraEnv: []
-# # - name: MY_VAR
-# #   value: "my-value"

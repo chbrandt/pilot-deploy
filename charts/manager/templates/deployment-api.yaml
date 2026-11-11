@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "manager.apiName" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "manager.apiSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "manager.apiSelectorLabels" . | nindent 8 }}
+    spec:
+      # The API needs the cluster-scoped RBAC identity (namespaces, jobs,
+      # helm install on behalf of users, ...). The GUI pod does not.
+      serviceAccountName: {{ include "manager.serviceAccountName" . }}
+
+      {{- with .Values.api.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      containers:
+        - name: pilot-api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.flask.port }}
+              protocol: TCP
+
+          # ── Environment ───────────────────────────────────────────────
+          env:
+            - name: FLASK_PORT
+              value: {{ .Values.api.flask.port | quote }}
+            - name: FLASK_DEBUG
+              value: {{ .Values.api.flask.debug | quote }}
+            - name: FLASK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manager.apiSecretName" . }}
+                  key: {{ .Values.api.flask.existingSecretKey | quote }}
+            # OIDC client secret for confidential EGI Check-in clients.
+            # Only the API ever sees it; the GUI performs the exchange via
+            # POST /api/auth/oidc/exchange.
+            - name: PILOT_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manager.oidcSecretName" . }}
+                  key: {{ .Values.api.existingOidcSecretKey | quote }}
+            {{- with .Values.api.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+          # ── Volume mounts ─────────────────────────────────────────────
+          volumeMounts:
+            # pilot_config.yaml — unified site/charts/hpc configuration
+            - name: pilot-config
+              mountPath: /app/pilot_config.yaml
+              subPath: pilot_config.yaml
+              readOnly: true
+
+            {{- if .Values.api.persistence.enabled }}
+            # data/ — durable store for per-user saved configs
+            - name: data
+              mountPath: /app/data
+            {{- end }}
+
+          # ── Health checks (public /health endpoint) ─────────────────────
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+          # ── Resources ──────────────────────────────────────────────────
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+
+      # ── Volumes ───────────────────────────────────────────────────────
+      volumes:
+        - name: pilot-config
+          configMap:
+            name: {{ include "manager.fullname" . }}-pilot-config
+
+        {{- if .Values.api.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "manager.pvcName" . }}
+        {{- end }}

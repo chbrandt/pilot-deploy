@@ -1,10 +1,12 @@
 apiVersion: v2
 name: egi-hpc-pilot
-version: 0.2.1
+version: 0.3.0
 appVersion: 0.4.1
 type: application
 description: >
-  Helm chart for the HPC Pilot Manager — a Flask web application that manages
-  InterLink pod deployments and HPC job submissions inside a Kubernetes cluster.
+  Helm chart for HPC Pilot — deploys the two pilot-* services: pilot-api
+  (the REST API server managing per-user InterLink pod deployments and HPC
+  job submissions inside a Kubernetes cluster) and pilot-app (the web GUI,
+  a pure HTTP client of the API reached by users through the Ingress).
 sources:
-  - https://github.com/chbrandt/hpc_pilot
+  - https://github.com/chbrandt/pilot-deploy

@@ -4,10 +4,14 @@ This directory contains Helm charts for HPC Pilot components.
 
 ## Production charts
 
-### Manager app — `manager/`
+### Pilot services — `manager/`
 
-Deploys the HPC Pilot Manager Flask application **inside** the Kubernetes
-cluster, along with all supporting resources (RBAC, ConfigMaps, PVC, Ingress).
+Deploys the **two HPC Pilot services** inside the Kubernetes cluster, along
+with all supporting resources (RBAC, ConfigMaps, PVC, Ingress):
+
+- **pilot-api** — the REST API server (pilot-api repository)
+- **pilot-app** — the web GUI (pilot-app repository), a pure HTTP client of
+  the API
 
 - Chart: [`manager/`](./manager/)
 - Full instructions: [`manager/README.md`](./manager/README.md)
@@ -15,14 +19,16 @@ cluster, along with all supporting resources (RBAC, ConfigMaps, PVC, Ingress).
 Quick start:
 
 ```bash
-SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')
+API_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')
+APP_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')
 
-helm install manager ./charts/manager \
-  --set image.repository=ghcr.io/<your-org>/hpc-pilot-manager \
-  --set image.tag=latest \
-  --set flask.secretKey="$SECRET" \
-  --set siteConfig.hostname=manager.example.com \
-  --set interlinkConfig.chart=oci://ghcr.io/chbrandt/interlink
+helm install pilot ./charts/manager \
+  --set api.image.repository=ghcr.io/<your-org>/pilot-api \
+  --set api.flask.secretKey="$API_SECRET" \
+  --set app.image.repository=ghcr.io/<your-org>/pilot-app \
+  --set app.flask.secretKey="$APP_SECRET" \
+  --set siteConfig.hostname=pilot.example.org \
+  --set interlinkConfig.chart=oci://ghcr.io/chbrandt/interlink-helm-chart/interlink
 ```
 
 ### InterLink Pod — `interlink/`
@@ -30,7 +36,7 @@ helm install manager ./charts/manager \
 Defines the default values for the InterLink Helm chart that the manager
 deploys automatically into each user's namespace via `POST /api/interlink`.
 This chart is **not** installed directly by the operator — it is managed by
-the manager app on behalf of users.
+the pilot-api service on behalf of users.
 
 - Values reference: [`interlink/values.yaml`](./interlink/values.yaml)
 - Details: [`interlink/README.md`](./interlink/README.md)
