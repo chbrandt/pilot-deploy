@@ -3,9 +3,9 @@ ConfigMap: pilot_config.yaml
 Mounted into the manager pod at /app/pilot_config.yaml.
 
 Unified configuration file with three sections:
-  site:    hostname, wstunnel ports, allowed_groups (used to generate
-           per-user InterLink chart values and compute HPC wstunnel
-           parameters)
+  site:    hostname, wstunnel ports, allowed_groups and the optional
+           oidc client (EGI Check-in login); used to generate per-user
+           InterLink chart values and compute HPC wstunnel parameters
   charts:  default Helm chart presets pre-seeded per user (the InterLink
            chart)
   hpc:     per-HPC-node connection details (hostname, ssh_port, plugin)
@@ -22,6 +22,17 @@ data:
     site:
       hostname: {{ .Values.siteConfig.hostname }}
       default_image: {{ .Values.siteConfig.defaultImage | default "ubuntu:22.04" }}
+      # Optional EGI Check-in OIDC client. Consumed by pilot-api, which
+      # performs the OAuth token exchange and enforces `audience`; remote
+      # clients discover client_id/issuer/audience through the public
+      # GET /api/site endpoint. NOTE: the client *secret* is deliberately
+      # NOT rendered here — it is injected into the pilot-api pod as
+      # PILOT_OIDC_CLIENT_SECRET.
+      oidc:
+        client_id: {{ .Values.siteConfig.oidc.clientId | default "" | quote }}
+        issuer: {{ .Values.siteConfig.oidc.issuer | default "https://aai.egi.eu/auth/realms/egi" | quote }}
+        redirect_uri: {{ .Values.siteConfig.oidc.redirectUri | default "" | quote }}
+        audience: {{ .Values.siteConfig.oidc.audience | default "" | quote }}
       wstunnel:
         port: {{ .Values.siteConfig.wstunnel.port }}
         local_port: {{ .Values.siteConfig.wstunnel.localPort }}

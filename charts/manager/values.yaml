@@ -37,14 +37,6 @@ api:
     existingSecret: ""
     existingSecretKey: flask-secret-key
 
-  # OIDC client secret for confidential EGI Check-in clients. When
-  # non-empty it is injected into the API pod as PILOT_OIDC_CLIENT_SECRET
-  # (the GUI never receives it). Alternatively reference an existing
-  # Secret below.
-  oidcClientSecret: ""
-  existingOidcSecret: ""
-  existingOidcSecretKey: pilot-oidc-client-secret
-
   # Persistent storage for per-user saved deployment configs (API-owned).
   persistence:
     enabled: false
@@ -118,6 +110,38 @@ siteConfig:
   allowedGroups: []
     # - "vo.access.egi.eu"
     # - "hpc-wg"
+
+  # ── EGI Check-in OAuth login (optional) ────────────────────────────────
+  # Rendered into the `site.oidc` block of pilot_config.yaml, mounted into
+  # the pilot-api pod. pilot-api owns the whole authentication backend: it
+  # performs the OAuth code→token exchange (POST /api/auth/oidc/exchange),
+  # validates every access token (POST /api/auth/verify and `require_token`
+  # on protected routes) and publishes client_id/issuer/audience to remote
+  # clients through the public GET /api/site endpoint. The GUI (pilot-app)
+  # is a pure HTTP client — it never receives the client secret nor a
+  # config file.
+  oidc:
+    # OIDC client registered in EGI Check-in. When non-empty the login page
+    # shows the "Log in with EGI Check-in" button; leave empty to disable
+    # it (the token-paste login still works).
+    clientId: ""
+    # Keycloak realm used to build the authorize/token endpoints.
+    issuer: "https://aai.egi.eu/auth/realms/egi"
+    # Optional explicit OAuth callback; empty =
+    # <siteConfig.hostname>/oauth/callback (derived by the GUI).
+    redirectUri: ""
+    # Optional expected JWT 'aud' claim, enforced by pilot-api when
+    # validating tokens (empty = the claim is not checked). Also published
+    # through GET /api/site for standalone clients minting their own tokens.
+    audience: ""
+    # Secret for confidential OIDC clients. NOT written into
+    # pilot_config.yaml — it is injected into the pilot-api pod as
+    # PILOT_OIDC_CLIENT_SECRET (the GUI never receives it).
+    clientSecret: ""
+    # Reference a pre-existing Secret (holding the client secret at
+    # existingSecretKey) instead of clientSecret above.
+    existingSecret: ""
+    existingSecretKey: pilot-oidc-client-secret
 
 interlinkConfig:
   chart: oci://ghcr.io/chbrandt/interlink-helm-chart/interlink

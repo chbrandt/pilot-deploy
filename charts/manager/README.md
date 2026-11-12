@@ -27,7 +27,7 @@ per-user [InterLink](https://interlink-project.dev) pod deployments:
 | `egi-hpc-pilot` | `ClusterRole` | RBAC superset of the InterLink virtual-kubelet role: namespaces, jobs, services, ingresses, nodes (+status), pods (+status), configmaps, secrets, events, deployments, replicasets, serviceaccounts (+token), certificatesigningrequests (+approval), leases, and cluster/role RBAC |
 | `egi-hpc-pilot` | `ClusterRoleBinding` | Binds the ClusterRole to the ServiceAccount |
 | `<fullname>` | `Secret` | Session keys for both services (+ optional OIDC client secret) |
-| `<fullname>-pilot-config` | `ConfigMap` | `pilot_config.yaml` (unified site + charts + hpc configuration) |
+| `<fullname>-pilot-config` | `ConfigMap` | `pilot_config.yaml` (unified site + charts + hpc configuration; mounted into the pilot-api pod) |
 | `<fullname>-data` | `PersistentVolumeClaim` | Durable store for per-user saved deployment configs (pilot-api) |
 | `<fullname>-api` | `Deployment` | The **pilot-api** pod |
 | `<fullname>-app` | `Deployment` | The **pilot-app** (web GUI) pod |
@@ -117,13 +117,30 @@ Identical structure under `api.` (the REST API) and `app.` (the web GUI):
 | `app.flask.existingSecretKey` | `app-flask-secret-key` | Key inside the existing Secret (pilot-app) |
 | `app.apiBaseUrl` | `""` | Base URL of the API as seen from the GUI pod (default: the in-cluster `…-api` Service) |
 
-### OIDC client secret (pilot-api only)
+### EGI Check-in OIDC login (`siteConfig.oidc`)
+
+The API (**pilot-api**) owns the whole authentication backend: it performs
+the OAuth code→token exchange (`POST /api/auth/oidc/exchange`), validates
+tokens (`POST /api/auth/verify`) and publishes `client_id`, `issuer` and
+`audience` via the public `GET /api/site` endpoint. The GUI (**pilot-app**)
+is a pure HTTP client: it starts the browser authorization-code flow and
+forwards the authorization code + PKCE verifier to the API — the client
+*secret* never reaches it.
+
+The non-secret client settings below are rendered into the `site.oidc`
+block of `pilot_config.yaml` (mounted into the pilot-api pod); the client
+*secret* is injected into the pilot-api pod as `PILOT_OIDC_CLIENT_SECRET`
+and never written into the ConfigMap.
 
 | Parameter | Default | Description |
 |---|---|---|
-| `api.oidcClientSecret` | `""` | Chart-Secret value injected as `PILOT_OIDC_CLIENT_SECRET` into the API pod — the GUI never receives it |
-| `api.existingOidcSecret` | `""` | Use a pre-existing Secret for the OIDC client secret |
-| `api.existingOidcSecretKey` | `pilot-oidc-client-secret` | Key inside the existing OIDC Secret |
+| `siteConfig.oidc.clientId` | `""` | OIDC client registered in EGI Check-in; when set, the GUI shows the "Log in with EGI Check-in" button |
+| `siteConfig.oidc.issuer` | `https://aai.egi.eu/auth/realms/egi` | Keycloak realm used for the authorize/token endpoints |
+| `siteConfig.oidc.redirectUri` | `""` | Optional explicit OAuth callback; empty = `<siteConfig.hostname>/oauth/callback` |
+| `siteConfig.oidc.audience` | `""` | Optional expected JWT `aud` claim — enforced by pilot-api during token validation (empty = not checked; published via `GET /api/site` for standalone clients) |
+| `siteConfig.oidc.clientSecret` | `""` | Confidential-client secret — injected into the pilot-api pod as `PILOT_OIDC_CLIENT_SECRET` (the GUI never receives it) |
+| `siteConfig.oidc.existingSecret` | `""` | Use a pre-existing Secret for the OIDC client secret |
+| `siteConfig.oidc.existingSecretKey` | `pilot-oidc-client-secret` | Key inside the existing OIDC Secret |
 
 ### Unified configuration (`pilot_config.yaml`)
 

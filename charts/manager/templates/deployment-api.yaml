@@ -46,14 +46,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "manager.apiSecretName" . }}
                   key: {{ .Values.api.flask.existingSecretKey | quote }}
-            # OIDC client secret for confidential EGI Check-in clients.
-            # Only the API ever sees it; the GUI performs the exchange via
-            # POST /api/auth/oidc/exchange.
+            # OIDC client secret for confidential EGI Check-in clients —
+            # only the API ever receives it. The API owns the OAuth
+            # code→token exchange (POST /api/auth/oidc/exchange); the GUI
+            # just forwards the authorization code + PKCE verifier.
             - name: PILOT_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "manager.oidcSecretName" . }}
-                  key: {{ .Values.api.existingOidcSecretKey | quote }}
+                  key: {{ .Values.siteConfig.oidc.existingSecretKey | quote }}
             {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

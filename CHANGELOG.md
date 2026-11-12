@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **EGI Check-in OAuth login through chart values** (`siteConfig.oidc`):
+  the chart now renders the `site.oidc` block (client_id, issuer,
+  redirect_uri, audience) into the `pilot_config.yaml` ConfigMap mounted
+  into the pilot-api pod — closing the known issue recorded in v0.5 (the
+  block was not rendered in-cluster since v0.4.1). With it,
+  `POST /api/auth/oidc/exchange`, `POST /api/auth/verify` and the public
+  `GET /api/site` become configurable in-cluster; the confidential client
+  secret continues to be injected into the pilot-api pod via
+  `PILOT_OIDC_CLIENT_SECRET` (the GUI never receives it).
+  **Breaking**: the OIDC secret values moved from `api.oidcClientSecret` /
+  `api.existingOidcSecret` / `api.existingOidcSecretKey` to
+  `siteConfig.oidc.clientSecret` / `siteConfig.oidc.existingSecret` /
+  `siteConfig.oidc.existingSecretKey`.
+
 ## [v0.5] - 2026-12-11
 
 ### Changed

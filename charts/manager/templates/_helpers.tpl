@@ -66,9 +66,9 @@ app.kubernetes.io/component: app
 {{- end -}}
 
 {{/*
-Secret carrying the FLASK_SECRET_KEYs (and the optional OIDC client secret).
-When existingSecret values are set, those Secrets are used; otherwise the
-chart creates its own Secret named after the release.
+Secret carrying the FLASK_SECRET_KEYs. When existingSecret values are set,
+those Secrets are used; otherwise the chart creates its own Secret named
+after the release.
 */}}
 {{- define "manager.apiSecretName" -}}
 {{- if .Values.api.flask.existingSecret -}}
@@ -86,9 +86,16 @@ chart creates its own Secret named after the release.
 {{- end -}}
 {{- end -}}
 
+{{/*
+Secret carrying the optional OIDC client secret. The API (pilot-api) owns
+the OAuth code→token exchange (POST /api/auth/oidc/exchange), so the
+secret is injected into the pilot-api pod only — the GUI never receives
+it. When siteConfig.oidc.existingSecret is set, that Secret is used;
+otherwise the chart creates its own Secret named after the release.
+*/}}
 {{- define "manager.oidcSecretName" -}}
-{{- if .Values.api.existingOidcSecret -}}
-{{- .Values.api.existingOidcSecret -}}
+{{- if .Values.siteConfig.oidc.existingSecret -}}
+{{- .Values.siteConfig.oidc.existingSecret -}}
 {{- else -}}
 {{- include "manager.fullname" . -}}
 {{- end -}}

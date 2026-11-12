@@ -78,7 +78,7 @@ The full values reference lives in
 |---|---|
 | `api.image.*` / `app.image.*` | The two service images |
 | `api.flask.secretKey` / `app.flask.secretKey` | Session keys (always override in production) |
-| `api.oidcClientSecret` | `PILOT_OIDC_CLIENT_SECRET` for the API (confidential EGI Check-in clients) |
+| `siteConfig.oidc.*` | EGI Check-in OAuth login — client/issuer/audience render into `pilot_config.yaml`; `clientSecret` → `PILOT_OIDC_CLIENT_SECRET` in the API pod |
 | `siteConfig.hostname` | Single shared hostname (no wildcard DNS/TLS needed) |
 | `siteConfig.wstunnel.port` / `localPort` | Shared wstunnel routing ports |
 | `hpcConfig.nodes` | Per-HPC-node connection details (`hostname`, `ssh_port`, `plugin`) |
