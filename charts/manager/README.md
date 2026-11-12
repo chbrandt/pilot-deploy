@@ -12,7 +12,7 @@ per-user [InterLink](https://interlink-project.dev) pod deployments:
   a pure HTTP client of the API. Reached by users through the Ingress.
 
 - **Chart name:** `egi-hpc-pilot` (see [`Chart.yaml`](./Chart.yaml))
-- **Version:** `0.5.0` / appVersion `0.5`
+- **Version:** `0.5.1` / appVersion `0.5.1`
 
 ---
 
