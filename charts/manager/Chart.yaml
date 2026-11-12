@@ -1,7 +1,7 @@
 apiVersion: v2
 name: egi-hpc-pilot
-version: 0.3.0
-appVersion: 0.4.1
+version: 0.5.0
+appVersion: "0.5"
 type: application
 description: >
   Helm chart for HPC Pilot — deploys the two pilot-* services: pilot-api

@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.5] - 2026-12-11
 
 ### Changed
 
@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repositories: **pilot-deploy** (this repo — Helm charts, docker recipes
   and packaging CI), **pilot-api** (the REST API server) and **pilot-app**
   (the web GUI).
-- **Manager chart → two services** (`egi-hpc-pilot` v0.3.0, breaking values
+- **Manager chart → two services** (`egi-hpc-pilot` v0.5, breaking values
   change): the chart now deploys both `pilot-api` and `pilot-app` — two
   Deployments and two ClusterIP Services. Values were restructured:
   `api.image.*` / `app.image.*`, `api.flask.*` / `app.flask.*`,
@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `docker/docker-compose.yml` recipe running both service images
   locally; `docker/motley_cue/` (HPC edge-node) moved here from
   `archive/docker/`.
+
+### Known issues
+
+- The `egi-hpc-pilot` chart does not render the `site.oidc` block into
+  `pilot_config.yaml` yet (documented since v0.4.1): the EGI Check-in
+  OAuth login cannot be enabled through chart values in-cluster.
 
 ## [v0.4.1] - 2026-10-13
 
@@ -195,7 +201,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the now-unused templates `helm.html`, `hpc.html`, `releases.html` and
   `helm_result.html`.
 
-[Unreleased]: https://github.com/chbrandt/hpc_pilot/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/chbrandt/pilot-deploy/compare/v0.5...HEAD
+[v0.5]: https://github.com/chbrandt/pilot-deploy/compare/v0.4.1...v0.5
 [v0.4.1]: https://github.com/chbrandt/hpc_pilot/compare/v0.4...v0.4.1
 [v0.4]: https://github.com/chbrandt/hpc_pilot/compare/v0.3.10...v0.4
 [v0.3.10]: https://github.com/chbrandt/hpc_pilot/compare/v0.3.9...v0.3.10
